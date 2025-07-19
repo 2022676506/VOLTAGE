@@ -1,6 +1,6 @@
-
 streamlit
 numpy
 pandas
 matplotlib
 scipy
+Pillow
