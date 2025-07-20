@@ -7,9 +7,11 @@ import datetime
 from matplotlib.lines import Line2D
 
 st.set_page_config(page_title="Elevation Adjustment via LSA", layout="wide")
+
 st.title("📏 Elevation Adjustment using Least Squares Adjustment (LSA)")
 
 # ========== STEP 1: Input benchmark points ==========
+
 st.header("1️⃣ Input Benchmark Points")
 
 bm_option = st.radio("Select number of benchmark points", ["1", "2", "Custom"])
@@ -27,11 +29,12 @@ for i in range(bm_count):
     with col1:
         label = st.text_input(f"Label for BM{i+1}", key=f"bm_label_{i}")
     with col2:
-        elevation = st.number_input(f"Elevation for {label} (m)", format="%.3f", step=0.001, key=f"bm_elev_{i}")
+        elevation = st.number_input(f"Elevation for {label} (m)", key=f"bm_elev_{i}")
     if label:
         known_points[label] = elevation
 
 # ========== STEP 2: Unknown points ==========
+
 st.header("2️⃣ Unknown Points")
 raw_unknowns = st.text_input("Enter unknown point labels (comma-separated)", value="A,B,C")
 unknown_points = [pt.strip() for pt in raw_unknowns.split(",") if pt.strip()]
@@ -39,6 +42,7 @@ point_index = {pt: i for i, pt in enumerate(unknown_points)}
 u = len(unknown_points)
 
 # ========== STEP 3: Observations ==========
+
 st.header("3️⃣ Observations")
 n_obs = st.number_input("Number of observations", min_value=1, step=1)
 observations = []
@@ -47,11 +51,12 @@ for i in range(n_obs):
     with st.expander(f"Observation {i+1}"):
         frm = st.text_input(f"From point", key=f"from_{i}")
         to = st.text_input(f"To point", key=f"to_{i}")
-        diff = st.number_input(f"Height difference (m)", format="%.3f", step=0.001, key=f"diff_{i}")
+        diff = st.number_input(f"Height difference (m)", key=f"diff_{i}")
         if frm and to:
             observations.append((frm, to, diff))
 
 # ========== STEP 4: Perform LSA ==========
+
 if st.button("🔍 Perform LSA"):
     st.header("🧮 Least Squares Adjustment Results")
     n = len(observations)
@@ -79,10 +84,10 @@ if st.button("🔍 Perform LSA"):
         L[i] += dh
 
     st.subheader("Matrix A:")
-    st.write(np.round(A, 3))
+    st.write(A)
 
     st.subheader("Matrix L:")
-    st.write(np.round(L, 3))
+    st.write(L)
 
     # LSA computation
     AT = A.T
@@ -111,20 +116,15 @@ if st.button("🔍 Perform LSA"):
 
     df_output = pd.DataFrame({
         'Point': unknown_points,
-        'Adjusted Elevation (m)': np.round(X.flatten(), 3),
-        'Std Deviation (m)': np.round(std_dev, 3),
-        'CI Lower Bound (99%)': np.round(X.flatten() - z_score * std_dev, 3),
-        'CI Upper Bound (99%)': np.round(X.flatten() + z_score * std_dev, 3)
+        'Adjusted Elevation (m)': X.flatten(),
+        'Std Deviation (m)': std_dev,
+        'CI Lower Bound (99%)': X.flatten() - z_score * std_dev,
+        'CI Upper Bound (99%)': X.flatten() + z_score * std_dev
     })
 
-    st.dataframe(df_output.style.format({
-        'Adjusted Elevation (m)': '{:.5f}',
-        'Std Deviation (m)': '{:.5f}',
-        'CI Lower Bound (99%)': '{:.5f}',
-        'CI Upper Bound (99%)': '{:.5f}'
-    }))
+    st.dataframe(df_output)
 
-    st.success(f"Variance Factor (σ₀²): {sigma0_squared:.5f}")
+    st.success(f"Variance Factor (σ₀²): {sigma0_squared:.6f}")
 
     # Combine all points
     elevation_points = unknown_points + list(known_points.keys())
@@ -164,15 +164,15 @@ if st.button("🔍 Perform LSA"):
     for i, pt in enumerate(elevation_points):
         ax2.errorbar(x_positions[i], elevation_values[i], yerr=confidence_intervals[i],
                      fmt=markers[i], color=colors[i], ecolor='gray', capsize=5, markersize=8)
-        ax2.text(x_positions[i], elevation_values[i] + 0.1,
-                 f"{pt}\n{elevation_values[i]:.5f} m", ha='center', fontsize=8)
+        ax2.text(x_positions[i], elevation_values[i] + 0.1, f"{pt}\n{elevation_values[i]:.3f} m",
+                 ha='center', fontsize=8)
 
     legend_elements = [
         Line2D([0], [0], marker='o', color='blue', label='Unknown Point', linestyle=''),
         Line2D([0], [0], marker='s', color='green', label='Benchmark (BM)', linestyle='')
     ]
     ax2.legend(handles=legend_elements)
-    ax2.set_title('Adjusted Elevation Profile')
+    ax2.set_title('Adjusted Elevation Profile (99% CI Including BM)')
     ax2.set_xlabel('Point Index')
     ax2.set_ylabel('Elevation (m)')
     ax2.set_xticks(x_positions)
