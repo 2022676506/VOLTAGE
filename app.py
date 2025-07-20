@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import scipy.stats as stats
 import datetime
 from matplotlib.lines import Line2D
+from io import BytesIO
 
 st.set_page_config(page_title="Elevation Adjustment via LSA", layout="wide")
 st.title("📏 Elevation Adjustment using Least Squares Adjustment (LSA)")
@@ -84,7 +85,6 @@ if st.button("🔍 Perform LSA"):
     st.subheader("Matrix L:")
     st.write(np.round(L, 3))
 
-    # LSA computation
     AT = A.T
     N = AT @ A
     U = AT @ L
@@ -94,7 +94,6 @@ if st.button("🔍 Perform LSA"):
     Cov = sigma0_squared * np.linalg.inv(N)
     std_dev = np.sqrt(np.diag(Cov))
 
-    # Show formulas
     st.subheader("📐 Formulas Used")
     st.latex(r"A \cdot X = L")
     st.latex(r"N = A^T A")
@@ -104,55 +103,55 @@ if st.button("🔍 Perform LSA"):
     st.latex(r"\hat{\sigma}_0^2 = \frac{V^T V}{r}")
     st.latex(r"\text{Cov}(X) = \hat{\sigma}_0^2 \cdot (A^T A)^{-1}")
 
-    # Display results
-    st.subheader("📈 Adjusted Elevations and Confidence Intervals")
-    confidence_level = 0.99
-    z_score = stats.norm.ppf(1 - (1 - confidence_level) / 2)
+    z_score = stats.norm.ppf(1 - (1 - 0.99) / 2)
 
     df_output = pd.DataFrame({
         'Point': unknown_points,
-        'Adjusted Elevation (m)': np.round(X.flatten(), 3),
-        'Std Deviation (m)': np.round(std_dev, 3),
-        'CI Lower Bound (99%)': np.round(X.flatten() - z_score * std_dev, 3),
-        'CI Upper Bound (99%)': np.round(X.flatten() + z_score * std_dev, 3)
+        'Adjusted Elevation (m)': np.round(X.flatten(), 5),
+        'Std Deviation (m)': np.round(std_dev, 5),
+        'CI Lower Bound (99%)': np.round(X.flatten() - z_score * std_dev, 5),
+        'CI Upper Bound (99%)': np.round(X.flatten() + z_score * std_dev, 5)
     })
 
     st.dataframe(df_output.style.format({
-        'Adjusted Elevation (m)': '{:.4f}',
-        'Std Deviation (m)': '{:.6f}',
-        'CI Lower Bound (99%)': '{:.3f}',
-        'CI Upper Bound (99%)': '{:.3f}'
+        'Adjusted Elevation (m)': '{:.5f}',
+        'Std Deviation (m)': '{:.5f}',
+        'CI Lower Bound (99%)': '{:.5f}',
+        'CI Upper Bound (99%)': '{:.5f}'
     }))
 
     st.success(f"Variance Factor (σ₀²): {sigma0_squared:.6f}")
 
-    # Combine all points
     elevation_points = unknown_points + list(known_points.keys())
     elevation_values = list(X.flatten()) + [known_points[k] for k in known_points]
     confidence_intervals = [z_score * e for e in std_dev] + [0 for _ in known_points]
 
-    # Plot residuals
+    # ========== Residual Plot ==========
     st.subheader("📊 Residual Plot")
     threshold = 3 * np.sqrt(sigma0_squared)
     residuals = V.flatten()
     outliers = np.abs(residuals) > threshold
-    normal_idx = np.where(~outliers)[0]
-    outlier_idx = np.where(outliers)[0]
+    normal_idx = np.where(~outliers)[0] + 1  # Shift index to start from 1
+    outlier_idx = np.where(outliers)[0] + 1
 
     fig1, ax1 = plt.subplots(figsize=(8, 4))
-    ax1.bar(normal_idx, residuals[normal_idx], color='orange', label='Residuals')
-    ax1.bar(outlier_idx, residuals[outlier_idx], color='red', label='Outliers')
+    ax1.bar(normal_idx, residuals[~outliers], color='orange', label='Residuals')
+    ax1.bar(outlier_idx, residuals[outliers], color='red', label='Outliers')
     ax1.axhline(0, color='black', linestyle='--', linewidth=1)
     ax1.axhline(threshold, color='red', linestyle=':', linewidth=1)
     ax1.axhline(-threshold, color='red', linestyle=':', linewidth=1)
     ax1.set_title('Residual Plot of Elevation Differences')
-    ax1.set_xlabel('Observation Index')
+    ax1.set_xlabel('Observation Index (starts at 1)')
     ax1.set_ylabel('Residual (m)')
     ax1.legend()
     ax1.grid(True)
     st.pyplot(fig1)
 
-    # Plot elevation profile
+    buf1 = BytesIO()
+    fig1.savefig(buf1, format="png")
+    st.download_button("⬇️ Download Residual Plot", buf1.getvalue(), "residual_plot.png")
+
+    # ========== Elevation Profile ==========
     st.subheader("📉 Adjusted Elevation Profile")
     x_positions = list(range(len(elevation_points)))
     colors = ['blue' if pt in unknown_points else 'green' for pt in elevation_points]
@@ -179,3 +178,7 @@ if st.button("🔍 Perform LSA"):
     ax2.set_xticklabels(elevation_points)
     ax2.grid(True)
     st.pyplot(fig2)
+
+    buf2 = BytesIO()
+    fig2.savefig(buf2, format="png")
+    st.download_button("⬇️ Download Elevation Profile", buf2.getvalue(), "elevation_profile.png")
