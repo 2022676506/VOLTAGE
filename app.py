@@ -118,13 +118,13 @@ if st.button("🔍 Perform LSA"):
     })
 
     st.dataframe(df_output.style.format({
-        'Adjusted Elevation (m)': '{:.3f}',
-        'Std Deviation (m)': '{:.3f}',
+        'Adjusted Elevation (m)': '{:.4f}',
+        'Std Deviation (m)': '{:.6f}',
         'CI Lower Bound (99%)': '{:.3f}',
         'CI Upper Bound (99%)': '{:.3f}'
     }))
 
-    st.success(f"Variance Factor (σ₀²): {sigma0_squared:.3f}")
+    st.success(f"Variance Factor (σ₀²): {sigma0_squared:.6f}")
 
     # Combine all points
     elevation_points = unknown_points + list(known_points.keys())
