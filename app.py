@@ -7,7 +7,6 @@ import datetime
 from matplotlib.lines import Line2D
 
 st.set_page_config(page_title="Elevation Adjustment via LSA", layout="wide")
-
 st.title("📏 Elevation Adjustment using Least Squares Adjustment (LSA)")
 
 # ========== STEP 1: Input benchmark points ==========
@@ -28,7 +27,7 @@ for i in range(bm_count):
     with col1:
         label = st.text_input(f"Label for BM{i+1}", key=f"bm_label_{i}")
     with col2:
-        elevation = st.number_input(f"Elevation for {label} (m)", key=f"bm_elev_{i}")
+        elevation = st.number_input(f"Elevation for {label} (m)", format="%.3f", step=0.001, key=f"bm_elev_{i}")
     if label:
         known_points[label] = elevation
 
@@ -48,7 +47,7 @@ for i in range(n_obs):
     with st.expander(f"Observation {i+1}"):
         frm = st.text_input(f"From point", key=f"from_{i}")
         to = st.text_input(f"To point", key=f"to_{i}")
-        diff = st.number_input(f"Height difference (m)", key=f"diff_{i}")
+        diff = st.number_input(f"Height difference (m)", format="%.3f", step=0.001, key=f"diff_{i}")
         if frm and to:
             observations.append((frm, to, diff))
 
@@ -80,10 +79,10 @@ if st.button("🔍 Perform LSA"):
         L[i] += dh
 
     st.subheader("Matrix A:")
-    st.write(A)
+    st.write(np.round(A, 3))
 
     st.subheader("Matrix L:")
-    st.write(L)
+    st.write(np.round(L, 3))
 
     # LSA computation
     AT = A.T
@@ -165,15 +164,15 @@ if st.button("🔍 Perform LSA"):
     for i, pt in enumerate(elevation_points):
         ax2.errorbar(x_positions[i], elevation_values[i], yerr=confidence_intervals[i],
                      fmt=markers[i], color=colors[i], ecolor='gray', capsize=5, markersize=8)
-        ax2.text(x_positions[i], elevation_values[i] + 0.1, f"{pt}\n{elevation_values[i]:.5f} m",
-                 ha='center', fontsize=8)
+        ax2.text(x_positions[i], elevation_values[i] + 0.1,
+                 f"{pt}\n{elevation_values[i]:.5f} m", ha='center', fontsize=8)
 
     legend_elements = [
         Line2D([0], [0], marker='o', color='blue', label='Unknown Point', linestyle=''),
         Line2D([0], [0], marker='s', color='green', label='Benchmark (BM)', linestyle='')
     ]
     ax2.legend(handles=legend_elements)
-    ax2.set_title('Adjusted Elevation Profile (99% CI Including BM)')
+    ax2.set_title('Adjusted Elevation Profile')
     ax2.set_xlabel('Point Index')
     ax2.set_ylabel('Elevation (m)')
     ax2.set_xticks(x_positions)
