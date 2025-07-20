@@ -11,7 +11,6 @@ st.set_page_config(page_title="Elevation Adjustment via LSA", layout="wide")
 st.title("📏 Elevation Adjustment using Least Squares Adjustment (LSA)")
 
 # ========== STEP 1: Input benchmark points ==========
-
 st.header("1️⃣ Input Benchmark Points")
 
 bm_option = st.radio("Select number of benchmark points", ["1", "2", "Custom"])
@@ -34,7 +33,6 @@ for i in range(bm_count):
         known_points[label] = elevation
 
 # ========== STEP 2: Unknown points ==========
-
 st.header("2️⃣ Unknown Points")
 raw_unknowns = st.text_input("Enter unknown point labels (comma-separated)", value="A,B,C")
 unknown_points = [pt.strip() for pt in raw_unknowns.split(",") if pt.strip()]
@@ -42,7 +40,6 @@ point_index = {pt: i for i, pt in enumerate(unknown_points)}
 u = len(unknown_points)
 
 # ========== STEP 3: Observations ==========
-
 st.header("3️⃣ Observations")
 n_obs = st.number_input("Number of observations", min_value=1, step=1)
 observations = []
@@ -56,7 +53,6 @@ for i in range(n_obs):
             observations.append((frm, to, diff))
 
 # ========== STEP 4: Perform LSA ==========
-
 if st.button("🔍 Perform LSA"):
     st.header("🧮 Least Squares Adjustment Results")
     n = len(observations)
@@ -116,15 +112,20 @@ if st.button("🔍 Perform LSA"):
 
     df_output = pd.DataFrame({
         'Point': unknown_points,
-        'Adjusted Elevation (m)': X.flatten(),
-        'Std Deviation (m)': std_dev,
-        'CI Lower Bound (99%)': X.flatten() - z_score * std_dev,
-        'CI Upper Bound (99%)': X.flatten() + z_score * std_dev
+        'Adjusted Elevation (m)': np.round(X.flatten(), 3),
+        'Std Deviation (m)': np.round(std_dev, 3),
+        'CI Lower Bound (99%)': np.round(X.flatten() - z_score * std_dev, 3),
+        'CI Upper Bound (99%)': np.round(X.flatten() + z_score * std_dev, 3)
     })
 
-    st.dataframe(df_output)
+    st.dataframe(df_output.style.format({
+        'Adjusted Elevation (m)': '{:.3f}',
+        'Std Deviation (m)': '{:.3f}',
+        'CI Lower Bound (99%)': '{:.3f}',
+        'CI Upper Bound (99%)': '{:.3f}'
+    }))
 
-    st.success(f"Variance Factor (σ₀²): {sigma0_squared:.6f}")
+    st.success(f"Variance Factor (σ₀²): {sigma0_squared:.3f}")
 
     # Combine all points
     elevation_points = unknown_points + list(known_points.keys())
