@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import scipy.stats as stats
 import datetime
 from matplotlib.lines import Line2D
-from io import BytesIO
 
 st.set_page_config(page_title="Elevation Adjustment via LSA", layout="wide")
 st.title("📏 Elevation Adjustment using Least Squares Adjustment (LSA)")
@@ -95,6 +94,7 @@ if st.button("🔍 Perform LSA"):
     Cov = sigma0_squared * np.linalg.inv(N)
     std_dev = np.sqrt(np.diag(Cov))
 
+    # Show formulas
     st.subheader("📐 Formulas Used")
     st.latex(r"A \cdot X = L")
     st.latex(r"N = A^T A")
@@ -104,6 +104,8 @@ if st.button("🔍 Perform LSA"):
     st.latex(r"\hat{\sigma}_0^2 = \frac{V^T V}{r}")
     st.latex(r"\text{Cov}(X) = \hat{\sigma}_0^2 \cdot (A^T A)^{-1}")
 
+    # Display results
+    st.subheader("📈 Adjusted Elevations and Confidence Intervals")
     confidence_level = 0.99
     z_score = stats.norm.ppf(1 - (1 - confidence_level) / 2)
 
@@ -115,23 +117,21 @@ if st.button("🔍 Perform LSA"):
         'CI Upper Bound (99%)': np.round(X.flatten() + z_score * std_dev, 3)
     })
 
-    st.subheader("📋 Adjusted Elevations and Confidence Intervals")
-    st.dataframe(df_output)
+    st.dataframe(df_output.style.format({
+        'Adjusted Elevation (m)': '{:.5f}',
+        'Std Deviation (m)': '{:.5f}',
+        'CI Lower Bound (99%)': '{:.5f}',
+        'CI Upper Bound (99%)': '{:.5f}'
+    }))
 
     st.success(f"Variance Factor (σ₀²): {sigma0_squared:.5f}")
-
-    # ====== CSV Download ======
-    csv_data = df_output.to_csv(index=False).encode('utf-8')
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"lsa_adjustment_result_{timestamp}.csv"
-    st.download_button("📥 Download CSV", data=csv_data, file_name=filename, mime="text/csv")
 
     # Combine all points
     elevation_points = unknown_points + list(known_points.keys())
     elevation_values = list(X.flatten()) + [known_points[k] for k in known_points]
     confidence_intervals = [z_score * e for e in std_dev] + [0 for _ in known_points]
 
-    # ===== Residual Plot =====
+    # Plot residuals
     st.subheader("📊 Residual Plot")
     threshold = 3 * np.sqrt(sigma0_squared)
     residuals = V.flatten()
@@ -152,13 +152,7 @@ if st.button("🔍 Perform LSA"):
     ax1.grid(True)
     st.pyplot(fig1)
 
-    # Save Residual Plot to buffer
-    buf1 = BytesIO()
-    fig1.savefig(buf1, format="png")
-    st.download_button("⬇️ Download Residual Plot", buf1.getvalue(),
-                       file_name=f"residual_plot_{timestamp}.png", mime="image/png")
-
-    # ===== Elevation Profile Plot =====
+    # Plot elevation profile
     st.subheader("📉 Adjusted Elevation Profile")
     x_positions = list(range(len(elevation_points)))
     colors = ['blue' if pt in unknown_points else 'green' for pt in elevation_points]
@@ -185,9 +179,3 @@ if st.button("🔍 Perform LSA"):
     ax2.set_xticklabels(elevation_points)
     ax2.grid(True)
     st.pyplot(fig2)
-
-    # Save Elevation Profile to buffer
-    buf2 = BytesIO()
-    fig2.savefig(buf2, format="png")
-    st.download_button("⬇️ Download Elevation Profile", buf2.getvalue(),
-                       file_name=f"elevation_profile_{timestamp}.png", mime="image/png")
