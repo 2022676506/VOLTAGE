@@ -1,141 +1,105 @@
+from io import BytesIO
 import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import scipy.stats as stats
-import datetime
+from datetime import datetime
 from matplotlib.lines import Line2D
 
 st.set_page_config(page_title="Elevation Adjustment via LSA", layout="wide")
 st.title("📏 Elevation Adjustment using Least Squares Adjustment (LSA)")
 
-# ========== STEP 1: Input benchmark points ==========
-st.header("1️⃣ Input Benchmark Points")
+# ===============================
+# INPUT SECTION
+# ===============================
+def get_data():
+    with st.form("data_form"):
+        st.subheader("📌 Input Observations")
+        n_obs = st.number_input("Number of Observations (e.g. 5)", min_value=2, max_value=100, value=5)
+        st.markdown("Enter data in the format: **From, To, Elevation Difference (m), Std Dev (mm)**")
 
-bm_option = st.radio("Select number of benchmark points", ["1", "2", "Custom"])
-if bm_option == "1":
-    bm_count = 1
-elif bm_option == "2":
-    bm_count = 2
-else:
-    bm_count = st.number_input("Enter custom number of benchmark points", min_value=3, step=1)
+        obs_data = []
+        for i in range(n_obs):
+            cols = st.columns(4)
+            f = cols[0].text_input(f"From [{i+1}]", key=f"from_{i}")
+            t = cols[1].text_input(f"To [{i+1}]", key=f"to_{i}")
+            dh = cols[2].number_input(f"Δh (m) [{i+1}]", format="%.3f", key=f"dh_{i}")
+            std_mm = cols[3].number_input(f"σ (mm) [{i+1}]", min_value=0.0, format="%.1f", key=f"std_{i}")
+            obs_data.append([f.strip(), t.strip(), dh, std_mm / 1000.0])
 
-known_points = {}
-st.subheader("Enter Benchmark Elevations")
-for i in range(bm_count):
-    col1, col2 = st.columns(2)
-    with col1:
-        label = st.text_input(f"Label for BM{i+1}", key=f"bm_label_{i}")
-    with col2:
-        elevation = st.number_input(f"Elevation for {label} (m)", format="%.3f", step=0.001, key=f"bm_elev_{i}")
-    if label:
-        known_points[label] = elevation
+        st.subheader("🎯 Benchmark Elevation")
+        bm_name = st.text_input("Benchmark Point Name", value="BM1")
+        bm_elevation = st.number_input("Benchmark Elevation (m)", format="%.3f")
+        submitted = st.form_submit_button("🚀 Perform Adjustment")
+    return submitted, obs_data, bm_name, bm_elevation
 
-# ========== STEP 2: Unknown points ==========
-st.header("2️⃣ Unknown Points")
-raw_unknowns = st.text_input("Enter unknown point labels (comma-separated)", value="A,B,C")
-unknown_points = [pt.strip() for pt in raw_unknowns.split(",") if pt.strip()]
-point_index = {pt: i for i, pt in enumerate(unknown_points)}
-u = len(unknown_points)
+# ===============================
+# LSA COMPUTATION
+# ===============================
+def perform_lsa(obs_data, bm_name, bm_elevation):
+    all_points = set()
+    for f, t, _, _ in obs_data:
+        all_points.update([f, t])
+    unknown_points = sorted(list(all_points - {bm_name}))
+    point_index = {pt: i for i, pt in enumerate(unknown_points)}
+    n = len(unknown_points)
+    m = len(obs_data)
 
-# ========== STEP 3: Observations ==========
-st.header("3️⃣ Observations")
-n_obs = st.number_input("Number of observations", min_value=1, step=1)
-observations = []
+    A = np.zeros((m, n))
+    L = np.zeros((m, 1))
+    P = np.zeros((m, m))
 
-for i in range(n_obs):
-    with st.expander(f"Observation {i+1}"):
-        frm = st.text_input(f"From point", key=f"from_{i}")
-        to = st.text_input(f"To point", key=f"to_{i}")
-        diff = st.number_input(f"Height difference (m)", format="%.3f", step=0.001, key=f"diff_{i}")
-        if frm and to:
-            observations.append((frm, to, diff))
+    for i, (f, t, dh, std) in enumerate(obs_data):
+        if t != bm_name:
+            A[i, point_index[t]] = 1
+        if f != bm_name:
+            A[i, point_index[f]] = -1
+        known_elev = 0
+        if t == bm_name:
+            known_elev -= bm_elevation
+        if f == bm_name:
+            known_elev += bm_elevation
+        L[i, 0] = dh + known_elev
+        P[i, i] = 1 / std**2
 
-# ========== STEP 4: Perform LSA ==========
-if st.button("🔍 Perform LSA"):
-    st.header("🧮 Least Squares Adjustment Results")
-    n = len(observations)
-    r = n - u
-
-    st.markdown(f"**Redundancy (r)** = n - u = {n} - {u} = **{r}**")
-    if r <= 0:
-        st.error("❌ LSA cannot be performed because redundancy r ≤ 0.")
-        st.stop()
-
-    A = np.zeros((n, u))
-    L = np.zeros((n, 1))
-
-    for i, (frm, to, dh) in enumerate(observations):
-        if frm in point_index:
-            A[i, point_index[frm]] = -1
-        elif frm in known_points:
-            L[i] += known_points[frm]
-
-        if to in point_index:
-            A[i, point_index[to]] = 1
-        elif to in known_points:
-            L[i] -= known_points[to]
-
-        L[i] += dh
-
-    st.subheader("Matrix A:")
-    st.write(np.round(A, 3))
-
-    st.subheader("Matrix L:")
-    st.write(np.round(L, 3))
-
-    # LSA computation
-    AT = A.T
-    N = AT @ A
-    U = AT @ L
-    X = np.linalg.inv(N) @ U
+    N = A.T @ P @ A
+    U = A.T @ P @ L
+    X = np.linalg.solve(N, U)
     V = A @ X - L
-    sigma0_squared = (V.T @ V)[0, 0] / r
-    Cov = sigma0_squared * np.linalg.inv(N)
-    std_dev = np.sqrt(np.diag(Cov))
+    sigma0_squared = (V.T @ P @ V) / (m - n)
+    Qxx = np.linalg.inv(N)
+    S = np.sqrt(np.diag(Qxx) * sigma0_squared.item())
 
-    # Show formulas
-    st.subheader("📐 Formulas Used")
-    st.latex(r"A \cdot X = L")
-    st.latex(r"N = A^T A")
-    st.latex(r"U = A^T L")
-    st.latex(r"X = N^{-1} U")
-    st.latex(r"V = AX - L")
-    st.latex(r"\hat{\sigma}_0^2 = \frac{V^T V}{r}")
-    st.latex(r"\text{Cov}(X) = \hat{\sigma}_0^2 \cdot (A^T A)^{-1}")
+    adjusted_points = {bm_name: bm_elevation}
+    for i, pt in enumerate(unknown_points):
+        adjusted_points[pt] = X[i, 0]
 
-    # Display results
-    st.subheader("📈 Adjusted Elevations and Confidence Intervals")
-    confidence_level = 0.99
-    z_score = stats.norm.ppf(1 - (1 - confidence_level) / 2)
+    confidence_intervals = stats.t.ppf(1 - 0.005, df=m - n) * S
 
-    df_output = pd.DataFrame({
-        'Point': unknown_points,
-        'Adjusted Elevation (m)': np.round(X.flatten(), 3),
-        'Std Deviation (m)': np.round(std_dev, 3),
-        'CI Lower Bound (99%)': np.round(X.flatten() - z_score * std_dev, 3),
-        'CI Upper Bound (99%)': np.round(X.flatten() + z_score * std_dev, 3)
+    df = pd.DataFrame({
+        "Point": list(adjusted_points.keys()),
+        "Elevation (m)": [adjusted_points[pt] for pt in adjusted_points],
+        "± CI (99%)": [0] + list(confidence_intervals)
     })
+    return df, V, sigma0_squared, unknown_points, adjusted_points, confidence_intervals
 
-    st.dataframe(df_output.style.format({
-        'Adjusted Elevation (m)': '{:.3f}',
-        'Std Deviation (m)': '{:.3f}',
-        'CI Lower Bound (99%)': '{:.3f}',
-        'CI Upper Bound (99%)': '{:.3f}'
-    }))
+# ===============================
+# MAIN APP
+# ===============================
+submitted, obs_data, bm_name, bm_elevation = get_data()
+if submitted:
+    df, V, sigma0_squared, unknown_points, adjusted_points, confidence_intervals = perform_lsa(obs_data, bm_name, bm_elevation)
+    st.success("✅ Adjustment Completed!")
 
-    st.success(f"Variance Factor (σ₀²): {sigma0_squared:.3f}")
+    st.subheader("📄 Adjusted Elevations")
+    st.dataframe(df.style.format({"Elevation (m)": "{:.3f}", "± CI (99%)": "{:.3f}"}))
 
-    # ====== CSV Download ======
-    csv_data = df_output.to_csv(index=False).encode('utf-8')
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # Download CSV with timestamp
+    csv_data = df.to_csv(index=False).encode("utf-8")
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"lsa_adjustment_result_{timestamp}.csv"
     st.download_button("📥 Download CSV", data=csv_data, file_name=filename, mime="text/csv")
-
-    # Combine all points
-    elevation_points = unknown_points + list(known_points.keys())
-    elevation_values = list(X.flatten()) + [known_points[k] for k in known_points]
-    confidence_intervals = [z_score * e for e in std_dev] + [0 for _ in known_points]
 
     # Plot residuals
     st.subheader("📊 Residual Plot")
@@ -158,21 +122,25 @@ if st.button("🔍 Perform LSA"):
     ax1.grid(True)
     st.pyplot(fig1)
 
+    buf1 = BytesIO()
+    fig1.savefig(buf1, format="png")
+    st.download_button("📥 Download Residual Plot as PNG", buf1.getvalue(), file_name="residual_plot.png", mime="image/png")
+
     # Plot elevation profile
     st.subheader("📉 Adjusted Elevation Profile")
+    elevation_points = list(adjusted_points.keys())
+    elevation_values = [adjusted_points[pt] for pt in elevation_points]
     x_positions = list(range(len(elevation_points)))
     colors = ['blue' if pt in unknown_points else 'green' for pt in elevation_points]
     markers = ['o' if pt in unknown_points else 's' for pt in elevation_points]
 
     fig2, ax2 = plt.subplots(figsize=(10, 5))
     ax2.plot(x_positions, elevation_values, linestyle='-', color='gray', alpha=0.4)
-
     for i, pt in enumerate(elevation_points):
         ax2.errorbar(x_positions[i], elevation_values[i], yerr=confidence_intervals[i],
                      fmt=markers[i], color=colors[i], ecolor='gray', capsize=5, markersize=8)
         ax2.text(x_positions[i], elevation_values[i] + 0.1,
                  f"{pt}\n{elevation_values[i]:.3f} m", ha='center', fontsize=8)
-
     legend_elements = [
         Line2D([0], [0], marker='o', color='blue', label='Unknown Point', linestyle=''),
         Line2D([0], [0], marker='s', color='green', label='Benchmark (BM)', linestyle='')
@@ -185,3 +153,7 @@ if st.button("🔍 Perform LSA"):
     ax2.set_xticklabels(elevation_points)
     ax2.grid(True)
     st.pyplot(fig2)
+
+    buf2 = BytesIO()
+    fig2.savefig(buf2, format="png")
+    st.download_button("📥 Download Elevation Profile as PNG", buf2.getvalue(), file_name="elevation_profile.png", mime="image/png")
