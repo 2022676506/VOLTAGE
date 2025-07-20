@@ -141,7 +141,7 @@ if st.button("🔍 Perform LSA"):
     ax1.axhline(threshold, color='red', linestyle=':', linewidth=1)
     ax1.axhline(-threshold, color='red', linestyle=':', linewidth=1)
     ax1.set_title('Residual Plot of Elevation Differences')
-    ax1.set_xlabel('Observation Index (starts at 1)')
+    ax1.set_xlabel('Observation Index')
     ax1.set_ylabel('Residual (m)')
     ax1.legend()
     ax1.grid(True)
@@ -171,7 +171,7 @@ if st.button("🔍 Perform LSA"):
         Line2D([0], [0], marker='s', color='green', label='Benchmark (BM)', linestyle='')
     ]
     ax2.legend(handles=legend_elements)
-    ax2.set_title('Adjusted Elevation Profile (99% CI Including BM)')
+    ax2.set_title('Adjusted Elevation Profile')
     ax2.set_xlabel('Point Index')
     ax2.set_ylabel('Elevation (m)')
     ax2.set_xticks(x_positions)
