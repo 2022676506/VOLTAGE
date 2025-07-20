@@ -1,213 +1,134 @@
 import streamlit as st
-import numpy as np
-import pandas as pd
+import pandas as pd, numpy as np, datetime, io
 import matplotlib.pyplot as plt
-import scipy.stats as stats
-from io import StringIO
-from datetime import datetime
-import base64
+from scipy.stats import norm
+import os
 
-# === Page Setup ===
-st.set_page_config(page_title="Noah's Ark LSA App", layout="wide")
-st.title("🗺️ Noah's Ark - Elevation Adjustment using LSA")
-st.markdown("#### Least Squares Adjustment for Elevation with Benchmarks (BM) and Observations")
-
-# === Logo (Optional) ===
+# ————— Streamlit Page Setup —————
+st.set_page_config(page_title="LSA Elevation Adjuster", page_icon="📏", layout="centered")
 logo_path = "logo.png"
-try:
-    with open(logo_path, "rb") as f:
-        logo_base64 = base64.b64encode(f.read()).decode("utf-8")
-    st.markdown(f'<img src="data:image/png;base64,{logo_base64}" width="150"/>', unsafe_allow_html=True)
-except:
-    st.info("No logo found or not loaded.")
+if os.path.exists(logo_path):
+    st.image(logo_path, width=100)
+st.title("📐 LSA Elevation Adjustment App")
+st.markdown(f"🕒 **{datetime.datetime.now():%A, %d %B %Y ‑ %I:%M %p}**")
 
-# === Timestamp ===
-timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-st.caption(f"📅 Generated on: {timestamp}")
+st.markdown("""
+This tool performs a Least Squares Adjustment (LSA) for elevation data.  
+**Upload** CSV or TXT files, or **enter manually**, to compute adjusted heights and confidence intervals.
+""")
 
-# === Input Method Selection ===
-method = st.radio("Select input method:", ["Upload CSV", "Upload TXT", "Manual Input"])
+# ————— Data Input Section —————
+method = st.radio("Select Input Method:", ["Manual", "Upload CSV", "Upload TXT"])
 
-known_points = {}
-unknown_points = []
-observations = []
-
-# === Load CSV ===
+known_points, unknown_points, observations = {}, [], []
 if method == "Upload CSV":
-    csv_file = st.file_uploader("Upload CSV file", type=["csv"])
-    if csv_file:
-        try:
-            df = pd.read_csv(csv_file)
-            required_cols = {'Type', 'Point', 'From', 'To', 'HeightDiff'}
-            if not required_cols.issubset(df.columns):
-                st.error("CSV must contain columns: Type, Point, From, To, HeightDiff.")
-                st.stop()
-            known_df = df[df['Type'] == 'BM']
-            unknown_df = df[df['Type'] == 'Unknown']
-            known_points = dict(zip(known_df['Point'], known_df['Elevation']))
-            unknown_points = unknown_df['Point'].tolist()
-            observations = list(zip(df['From'], df['To'], df['HeightDiff']))
-        except Exception as e:
-            st.error(f"Error reading CSV: {e}")
-            st.stop()
-
-# === Load TXT ===
+    ufile = st.file_uploader("CSV file", type=["csv"])
+    if ufile:
+        df = pd.read_csv(ufile)
+        known_points = dict(zip(df[df.Type=="BM"].Point, df[df.Type=="BM"].Elevation))
+        unknown_points = df[df.Type=="Unknown"].Point.tolist()
+        observations = list(df[["From","To","HeightDiff"]].itertuples(index=False, name=None))
 elif method == "Upload TXT":
-    txt_file = st.file_uploader("Upload TXT file", type=["txt"])
-    if txt_file:
-        try:
-            lines = txt_file.read().decode().splitlines()
-            mode = None
-            for line in lines:
-                line = line.strip()
-                if line.lower() == "[benchmarks]":
-                    mode = 'bm'
-                    continue
-                elif line.lower() == "[unknowns]":
-                    mode = 'unknown'
-                    continue
-                elif line.lower() == "[observations]":
-                    mode = 'obs'
-                    continue
-                if not line or line.startswith("#"):
-                    continue
-                if mode == 'bm':
-                    label, val = line.split(',')
-                    known_points[label.strip()] = float(val)
-                elif mode == 'unknown':
-                    unknown_points.append(line.strip())
-                elif mode == 'obs':
-                    frm, to, diff = line.split(',')
-                    observations.append((frm.strip(), to.strip(), float(diff)))
-        except Exception as e:
-            st.error(f"Error reading TXT: {e}")
-            st.stop()
-
-# === Manual Input ===
-elif method == "Manual Input":
-    bm_count = st.number_input("Number of benchmark points?", min_value=1, max_value=10, value=2)
-    for i in range(bm_count):
-        col1, col2 = st.columns(2)
-        with col1:
-            label = st.text_input(f"Benchmark name {i+1}", key=f"bm_label_{i}")
-        with col2:
-            value = st.number_input(f"Elevation of {label}", key=f"bm_val_{i}")
-        if label:
-            known_points[label] = value
-
-    unknown_str = st.text_input("Enter unknown point names (comma-separated):", "A,B,C")
-    unknown_points = [pt.strip() for pt in unknown_str.split(",") if pt.strip()]
-
+    ufile = st.file_uploader("TXT file", type=["txt"])
+    if ufile:
+        lines = ufile.read().decode().splitlines()
+        mode = None
+        for L in lines:
+            L = L.strip()
+            if L.lower()=="[benchmarks]": mode="bm"; continue
+            if L.lower()=="[unknowns]": mode="un"; continue
+            if L.lower()=="[observations]": mode="obs"; continue
+            if not L or L.startswith("#"): continue
+            if mode=="bm":
+                k, v = L.split(","); known_points[k.strip()] = float(v)
+            elif mode=="un":
+                unknown_points.append(L)
+            elif mode=="obs":
+                f,t,d = L.split(","); observations.append((f.strip(), t.strip(), float(d)))
+else:
+    n_bm = st.number_input("Number of benchmarks", min_value=1, max_value=10, value=2, key="bm_input")
+    for i in range(n_bm):
+        k = st.text_input(f"BM{i+1} name", key=f"bm_nm_{i}")
+        v = st.number_input(f"{k} elevation (m)", key=f"bm_val_{i}")
+        if k: known_points[k] = v
+    up = st.text_input("Unknown point names (comma-separated)", value="P1,P2")
+    unknown_points = [x.strip() for x in up.split(",") if x.strip()]
     n_obs = st.number_input("Number of observations", min_value=1, value=3)
     for i in range(n_obs):
-        st.markdown(f"**Observation {i+1}**")
-        frm = st.text_input("From", key=f"obs_from_{i}")
-        to = st.text_input("To", key=f"obs_to_{i}")
-        dh = st.number_input("Height Difference (m)", key=f"obs_dh_{i}")
-        if frm and to:
-            observations.append((frm, to, dh))
+        f = st.text_input(f"Obs{i+1} From", key=f"frm_{i}")
+        t = st.text_input(f"Obs{i+1} To", key=f"to_{i}")
+        d = st.number_input(f"Obs{i+1} Height diff", value=0.0, key=f"diff_{i}")
+        if f and t: observations.append((f, t, d))
 
-# === Proceed if data valid ===
-if known_points and unknown_points and observations:
-    st.subheader("📌 Input Overview")
-    st.write(f"Known Points: {known_points}")
-    st.write(f"Unknown Points: {unknown_points}")
-    obs_df = pd.DataFrame(observations, columns=["From", "To", "Height Difference (m)"])
-    st.dataframe(obs_df)
+# ————— Perform LSA when ready —————
+if (method=="Manual" and known_points and unknown_points and observations) or observations:
+    if st.button("🔎 Compute LSA"):
+        u = len(unknown_points)
+        n = len(observations)
+        r = n - u
+        if r <= 0:
+            st.error("Insufficient redundancy (r ≤ u). Add more observations.")
+        else:
+            # Build A, L
+            A = np.zeros((n,u)); L = np.zeros((n,1))
+            idx = {pt:i for i, pt in enumerate(unknown_points)}
+            for i,(f,t,d) in enumerate(observations):
+                if f in idx: A[i,idx[f]] = -1
+                else: L[i]+=known_points.get(f,0)
+                if t in idx: A[i,idx[t]] = 1
+                else: L[i]-=known_points.get(t,0)
+                L[i]+=d
 
-    # === Matrix Setup ===
-    point_index = {pt: i for i, pt in enumerate(unknown_points)}
-    u = len(unknown_points)
-    n = len(observations)
-    r = n - u
+            # Compute X, residuals, variance
+            AT,N = A.T, None
+            N = AT@A
+            X = np.linalg.inv(N)@(AT@L)
+            V = A@X - L
+            s0_sq = float((V.T@V)/(r))
+            Cov = s0_sq * np.linalg.inv(N)
+            std = np.sqrt(np.diag(Cov))
+            z = norm.ppf(0.995)
 
-    if r <= 0:
-        st.error("Redundancy (r = n - u) must be > 0. Not enough observations.")
-        st.stop()
+            # Result dataframe
+            df_out = pd.DataFrame({
+                "Point": unknown_points,
+                "Adjusted": X.flatten(),
+                "StdDev": std,
+                "CI Low": X.flatten()-z*std,
+                "CI High":X.flatten()+z*std
+            }).round(4)
+            st.subheader("📊 Adjusted Elevations")
+            st.dataframe(df_out)
 
-    A = np.zeros((n, u))
-    L = np.zeros((n, 1))
-    for i, (frm, to, dh) in enumerate(observations):
-        if frm in point_index:
-            A[i, point_index[frm]] = -1
-        elif frm in known_points:
-            L[i] += known_points[frm]
+            st.success(f"Variance factor σ₀² = {s0_sq:.6f}")
 
-        if to in point_index:
-            A[i, point_index[to]] = 1
-        elif to in known_points:
-            L[i] -= known_points[to]
+            # CSV download
+            buf = io.StringIO(); df_out.to_csv(buf, index=False)
+            st.download_button("⬇️ Download Results CSV", buf.getvalue(), "results.csv", "text/csv")
 
-        L[i] += dh
+            # Residual plot
+            st.subheader("📉 Residual Plot")
+            fig,ax = plt.subplots()
+            res = V.flatten()
+            thresh = 3*np.sqrt(s0_sq)
+            ax.bar(range(n), res, color=['red' if abs(x)>thresh else 'orange' for x in res])
+            ax.axhline(0, color='black', linestyle='--')
+            ax.set_xlabel("Observation #"); ax.set_ylabel("Residual (m)")
+            ax.legend(handles=[
+                plt.Line2D([0],[0],color='orange',label='Normal'),
+                plt.Line2D([0],[0],color='red',label='Outlier')
+            ])
+            st.pyplot(fig)
 
-    # === Least Squares Adjustment ===
-    AT = A.T
-    N = AT @ A
-    U = AT @ L
-    try:
-        X = np.linalg.solve(N, U)
-    except np.linalg.LinAlgError:
-        st.error("Matrix N is singular. The network may not be connected.")
-        st.stop()
-
-    V = A @ X - L
-    sigma0_squared = (V.T @ V)[0, 0] / r
-    Cov = sigma0_squared * np.linalg.inv(N)
-    std_dev = np.sqrt(np.diag(Cov))
-
-    # === Result Table ===
-    confidence_level = 0.99
-    z_score = stats.norm.ppf(1 - (1 - confidence_level) / 2)
-    results = []
-    for i, pt in enumerate(unknown_points):
-        elev = X[i, 0]
-        unc = std_dev[i]
-        ci = z_score * unc
-        results.append((pt, elev, unc, elev - ci, elev + ci))
-
-    df_result = pd.DataFrame(results, columns=["Point", "Adjusted Elevation (m)", "Std Deviation (m)", "CI Lower", "CI Upper"])
-    st.subheader("✅ Adjusted Elevation Results")
-    st.dataframe(df_result.style.format(precision=4))
-
-    # === Download Button ===
-    csv = df_result.to_csv(index=False).encode()
-    st.download_button("📥 Download Results as CSV", data=csv, file_name="adjusted_results.csv", mime='text/csv')
-
-    # === Residual Plot ===
-    st.subheader("📊 Residual Plot with Outliers")
-    threshold = 3 * np.sqrt(sigma0_squared)
-    res = V.flatten()
-    outliers = np.abs(res) > threshold
-    fig, ax = plt.subplots(figsize=(8, 3))
-    ax.bar(np.arange(len(res)), res, color=['red' if o else 'orange' for o in outliers])
-    ax.axhline(0, color='black', linestyle='--')
-    ax.axhline(threshold, color='red', linestyle=':')
-    ax.axhline(-threshold, color='red', linestyle=':')
-    ax.set_xticks(np.arange(len(res)))
-    ax.set_xticklabels([f"Obs {i+1}" for i in range(len(res))], rotation=45)
-    ax.set_ylabel("Residual (m)")
-    ax.set_title("Residuals with Outlier Detection")
-    st.pyplot(fig)
-
-    # === Elevation Profile Plot ===
-    st.subheader("📈 Adjusted Elevation Profile")
-    elevation_points = unknown_points + list(known_points.keys())
-    elevation_values = list(X.flatten()) + [known_points[k] for k in known_points]
-    confidence_intervals = [z_score * e for e in std_dev] + [0 for _ in known_points]
-    colors = ['blue' if pt in unknown_points else 'green' for pt in elevation_points]
-    markers = ['o' if pt in unknown_points else 's' for pt in elevation_points]
-    fig2, ax2 = plt.subplots(figsize=(10, 4))
-    x_pos = list(range(len(elevation_points)))
-    ax2.plot(x_pos, elevation_values, linestyle='-', color='gray', alpha=0.5)
-    for i, pt in enumerate(elevation_points):
-        ax2.errorbar(x_pos[i], elevation_values[i], yerr=confidence_intervals[i], fmt=markers[i],
-                     color=colors[i], ecolor='gray', capsize=4, markersize=7)
-        ax2.text(x_pos[i], elevation_values[i]+0.05, f"{pt}\n{elevation_values[i]:.2f}m", ha='center', fontsize=8)
-    ax2.set_xticks(x_pos)
-    ax2.set_xticklabels(elevation_points)
-    ax2.set_ylabel("Elevation (m)")
-    ax2.set_title("Elevation Profile with 99% Confidence Intervals")
-    st.pyplot(fig2)
-
-else:
-    st.warning("Please provide valid data using one of the input methods above.")
+            # Elevation plot
+            st.subheader("📈 Elevation Profile")
+            pts = unknown_points + list(known_points.keys())
+            vals = list(X.flatten()) + [known_points[k] for k in known_points]
+            cis = list(z*std) + [0]*len(known_points)
+            fig2,ax2 = plt.subplots()
+            x = np.arange(len(pts))
+            ax2.errorbar(x, vals, yerr=cis, fmt='o', ecolor='gray', capsize=4, color='blue')
+            ax2.plot(x, vals, linestyle='--', color='lightgray')
+            ax2.set_xticks(x); ax2.set_xticklabels(pts)
+            ax2.set_ylabel("Elevation (m)")
+            st.pyplot(fig2)
