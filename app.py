@@ -24,7 +24,7 @@ else:
 known_points = {}
 st.subheader("Enter Benchmark Elevations")
 for i in range(bm_count):
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns(3)
     with col1:
         label = st.text_input(f"Label for BM{i+1}", key=f"bm_label_{i}")
     with col2:
