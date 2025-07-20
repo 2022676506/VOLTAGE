@@ -7,6 +7,19 @@ import datetime
 from matplotlib.lines import Line2D
 
 st.set_page_config(page_title="Elevation Adjustment via LSA", layout="wide")
+
+# === Custom green-yellow background ===
+st.markdown(
+    """
+    <style>
+    body {
+        background: linear-gradient(to right, #ccffcc, #ffffcc);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("📏 Elevation Adjustment using Least Squares Adjustment (LSA)")
 
 # ========== STEP 1: Input benchmark points ==========
