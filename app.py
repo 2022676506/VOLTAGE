@@ -3,16 +3,16 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import scipy.stats as stats
-import datetime
 from matplotlib.lines import Line2D
 
+# ========== PAGE CONFIG ==========
 st.set_page_config(page_title="Elevation Adjustment via LSA", layout="wide")
 
-# === Custom green-yellow background ===
+# ========== CUSTOM BACKGROUND ==========
 st.markdown(
     """
     <style>
-    body {
+    .main {
         background: linear-gradient(to right, #ccffcc, #ffffcc);
     }
     </style>
@@ -20,6 +20,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# ========== TITLE ==========
 st.title("📏 Elevation Adjustment using Least Squares Adjustment (LSA)")
 
 # ========== STEP 1: Input benchmark points ==========
